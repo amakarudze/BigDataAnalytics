@@ -25,6 +25,8 @@ function fileReceiver(req, res, next) {
 
 app.get('/', viewClones );
 
+app.get('/timers', viewTimers)
+
 const server = app.listen(PORT, () => { console.log('Listening for files on port', PORT); });
 
 
@@ -87,6 +89,152 @@ function viewClones(req, res, next) {
     page += lastFileTimersHTML() + '\n';
     page += listClonesHTML() + '\n';
     page += listProcessedFilesHTML() + '\n';
+    page += '</BODY></HTML>';
+    res.send(page);
+}
+
+function calculateAveragesByBlock(data, blockSize=100) {
+  const results = [];
+
+  for (let i = 0; i < data.length; i += blockSize) {
+    const block = data.slice(i, i + blockSize);
+
+    const { totalSum, matchSum } = block.reduce(
+      (acc, item) => {
+        acc.totalSum += item.total || 0;
+        acc.matchSum += item.match || 0;
+        return acc;
+      },
+      { totalSum: 0, matchSum: 0 }
+    );
+
+    const rangeStart = i;
+    const rangeEnd = Math.min(i + block.length - 1, data.length - 1);
+    const avgTotal = Math.round(totalSum / block.length);
+    const avgMatch = Math.round(matchSum / block.length);
+
+    results.push({
+      range: `${rangeStart}-${rangeEnd}`,
+      avgTotal,
+      avgMatch
+    });
+  }
+
+  return results;
+}
+
+function viewTimers(req, res, next) {
+    const fileStore = FileStorage.getInstance();
+    const files = Array.from(fileStore.getAllFiles());
+
+    if (!files || files.length === 0) {
+        return res.send('<HTML><HEAD><TITLE>CodeStream Clone Detector</TITLE></HEAD>\n<BODY><H1>No files have been processed yet.</H1>\n</BODY></HTML>');
+    }
+
+    let page=`
+        <HTML>
+            <HEAD>
+                <meta http-equiv="refresh" content="5">
+                <TITLE>CodeStream Clone Detector</TITLE>
+                <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" 
+                rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" 
+                crossorigin="anonymous">
+                <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" 
+                integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+            </HEAD>
+            <BODY>
+                <H1>CodeStream Clode Detector</H1>`;
+    let timerStats = [];
+
+    page += `<br><p>Total processed files: ${fileStore.numberOfFiles}</p>`;
+    page += `
+        <table class="table table-bordered border-primary">
+            <caption>Timer Statistics</caption>`;
+    page += `
+        <thead>
+            <tr>
+                <th scope="col">#</th>
+                <th scope="col">File Name</th>
+                <th scope="col">Total Time (µs)</th>
+                <th scope="col">Match Time (µs)</th>
+            </tr>
+        </thead>`;
+    page += '<tbody>\n';
+    
+    files.forEach((file, index) => {
+        const timers = Timer.getTimers(file);
+        if (!timers) return;
+        const total = Number(timers.total / 1000n);
+        const match = Number(timers.match / 1000n);
+
+        timerStats.push({ total, match });
+        page += `
+            <tr>
+                <th scope="row">${index + 1}</td>
+                <td>${file.name}</td>
+                <td>${total}</td>
+                <td>${match}</td>
+            </tr>`;
+    })
+    page += '</tbody>';
+    page += '</table>';
+
+    page += `<br>
+        <div class="container">
+            <div class="row">
+                <div class="col">
+                    <h3>Averages for every 100 files</h2>`
+    if (!timerStats || timerStats.length < 100) {
+        page += '<p>No averages to calculate for now.</p> </div>';
+    }
+    else {
+        const averages = calculateAveragesByBlock(timerStats, blockSize=100);
+        page += `
+        <table class="table table-bordered border-primary">
+            <thead>
+                <tr>
+                    <th scope="col">Index Range</th>
+                    <th scope="col">Average Total (µs)</th>
+                    <th scope="col">Average Match (µs)</th>
+                </tr>
+            </thead>`;
+        averages.forEach(row => {
+            page += `
+            <tr>
+                <th scope="row">${row.range}</td>
+                <td>${row.avgTotal}</td>
+                <td>${row.avgMatch}</td>
+            </tr>`;
+    })}
+    page += '</table></div>';
+    page += `
+        <div class="col">
+            <h3>Averages for every 1000 files</h2>`;
+    if (!timerStats || timerStats.length < 1000) {
+        page += '<p>No averages to calculate for now.</p> </div>';
+    }
+    else {
+        const averages = calculateAveragesByBlock(timerStats, blockSize=1000);
+        page += `
+        <table class="table table-bordered border-primary">
+            <thead>
+                <tr>
+                    <th scope="col">Index Range</th>
+                    <th scope="col">Average Total (µs)</th>
+                    <th scope="col">Average Match (µs)</th>
+                </tr>
+            </thead>`;
+        averages.forEach(row => {
+            page += `
+            <tr>
+                <th scope="row">${row.range}</td>
+                <td>${row.avgTotal}</td>
+                <td>${row.avgMatch}</td>
+            </tr>`;
+    })}
+    page += '</table></div></div></div>';
+
+    page += `<p><a href="/">← Back to home page</a></p>`;
     page += '</BODY></HTML>';
     res.send(page);
 }

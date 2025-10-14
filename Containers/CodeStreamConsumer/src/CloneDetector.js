@@ -92,8 +92,16 @@ class CloneDetector {
         // Return: file, including file.instances which is an array of Clone objects (or an empty array).
         //
 
-        file.instances = file.instances || [];        
+        file.instances = file.instances || [];
+    
+        var newInstances = file.chunks.flatMap(fileChunk =>
+            compareFile.chunks
+            .filter(compareChunk => this.#chunkMatch(fileChunk, compareChunk))
+            .map(match => new Clone(file.name, compareFile, fileChunk, match))
+        )
+        
         file.instances = file.instances.concat(newInstances);
+        // console.log(file.instances)
         return file;
     }
      
@@ -111,6 +119,22 @@ class CloneDetector {
         // Return: file, with file.instances only including Clones that have been expanded as much as they can,
         //         and not any of the Clones used during that expansion.
         //
+        file.instances = file.instances.reduce((acc, currentClone) => {
+            let merged = false;
+
+            for (let existingClone of acc) {
+                if (existingClone.maybeExpandWith(currentClone)) {
+                    merged = true;
+                    break; // Only forward expansion is needed, so we can stop after first success
+                }
+            }
+
+            if (!merged) {
+                acc.push(currentClone);
+            }
+
+            return acc;
+        }, []);
 
         return file;
     }
@@ -129,6 +153,21 @@ class CloneDetector {
         // Return: file, with file.instances containing unique Clone objects that may contain several targets
         //
 
+        file.instances = file.instances.reduce((accumulator, currentClone) => {
+            // Find a matching clone in the accumulator
+            const existingClone = accumulator.find(clone => clone.equals(currentClone));
+
+            if (existingClone) {
+                // If a match is found, add the current clone as a target
+                existingClone.addTarget(currentClone);
+            } else {
+                // Otherwise, this is a new clone – push it into the accumulator
+                accumulator.push(currentClone);
+            }
+
+            return accumulator;
+        }, []);
+        
         return file;
     }
     

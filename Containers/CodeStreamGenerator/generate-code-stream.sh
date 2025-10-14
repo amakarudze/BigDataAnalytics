@@ -25,6 +25,7 @@ sleep 5
 
 if [[ "$1" == "TEST" ]]; then
   echo "Started with TEST argument, first sending test files..."
+  sleep 5
   sendFile ./test/A.java
   sendFile ./test/B.java
   echo "Sent test files. Sleeping before continuing..."
